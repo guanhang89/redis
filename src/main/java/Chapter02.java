@@ -22,10 +22,13 @@ public class Chapter02
     {
         Jedis conn = new Jedis("localhost");
         conn.select(15);
-
+        //登录cookie的相关信息存储
         testLoginCookies(conn);
+        //购物车信息存储
         testShopppingCartCookies(conn);
+        //数据行缓存
         testCacheRows(conn);
+        //网页信息缓存
         testCacheRequest(conn);
     }
 
@@ -50,7 +53,7 @@ public class Chapter02
                 "Let's drop the maximum number of cookies to 0 to clean them out");
         System.out.println(
                 "We will start a thread to do the cleaning, while we stop it later");
-
+        //缓存清理线程
         CleanSessionsThread thread = new CleanSessionsThread(0);
         thread.start();
         Thread.sleep(1000);
@@ -129,7 +132,7 @@ public class Chapter02
 
         System.out.println(
                 "We'll start a caching thread that will cache the data...");
-
+        //缓存行清理
         CacheRowsThread thread = new CacheRowsThread();
         thread.start();
 
@@ -177,12 +180,13 @@ public class Chapter02
                 return "content for " + request;
             }
         };
-
+        //更新用户有关的信息
         updateToken(conn, token, "username", "itemX");
         String url = "http://test.com/?item=itemX";
         System.out.println(
                 "We are going to cache a simple request against "
                         + url);
+        //请求缓存页面，如果没有缓存，进行缓存（按照标准）
         String result = cacheRequest(conn, url, callback);
         System.out.println("We got initial content:\n" + result);
         System.out.println();
@@ -206,20 +210,24 @@ public class Chapter02
         return conn.hget("login:", token);
     }
 
+    //更新token
     public void updateToken(Jedis conn, String token, String user,
-                            String item)
-    {
+                            String item) {
         long timestamp = System.currentTimeMillis() / 1000;
         conn.hset("login:", token, user);
         conn.zadd("recent:", timestamp, token);
         if (item != null)
         {
+            //添加用户浏览过的商品
             conn.zadd("viewed:" + token, timestamp, item);
+            //只记录25个商品浏览记录
             conn.zremrangeByRank("viewed:" + token, 0, -26);
-            conn.zincrby("viewed:", -1, item);//键为item的分值减一
+            //键为item的分值减一
+            conn.zincrby("viewed:", -1, item);
         }
     }
 
+    //购物车添加商品
     public void addToCart(Jedis conn, String session, String item,
                           int count)
     {
@@ -233,6 +241,7 @@ public class Chapter02
         }
     }
 
+    //缓存数据行
     public void scheduleRowCache(Jedis conn, String rowId, int delay)
     {
         conn.zadd("delay:", delay, rowId);
@@ -243,7 +252,8 @@ public class Chapter02
     public String cacheRequest(Jedis conn, String request,
                                Callback callback)
     {
-        if (!canCache(conn, request))//如果可以缓存
+        //判断是否值得缓存
+        if (!canCache(conn, request))
         {
             return callback != null ? callback.call(request) : null;
         }
@@ -260,6 +270,7 @@ public class Chapter02
         return content;
     }
 
+    //判断网页是否要缓存，判断的理由是view的数量是否排名靠前
     public boolean canCache(Jedis conn, String request)
     {
         try
@@ -331,7 +342,8 @@ public class Chapter02
         {
             while (!quit)
             {
-                long size = conn.zcard("recent:");//返回该集合大小
+                //返回该集合大小，如果超出总数就清理
+                long size = conn.zcard("recent:");
                 if (size <= limit)
                 {
                     try
@@ -344,7 +356,7 @@ public class Chapter02
                     }
                     continue;
                 }
-
+                //每次最多清理100个
                 long endIndex = Math.min(size - limit, 100);
                 Set<String> tokenSet = conn.zrange("recent:", 0,
                         endIndex - 1);
